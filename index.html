@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>15418 Final Project</title>
+
+    <link href="css/bootstrap.min.css" rel="stylesheet">
+
+    <!--[if lt IE 9]>
+      <script src="https://oss.maxcdn.com/libs/html5shiv/3.7.0/html5shiv.js"></script>
+      <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
+    <![endif]-->
+
+    <!-- highlight.js -->
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.5/styles/default.min.css">
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.5/highlight.min.js"></script>
+  </head>
+
+  <body style="padding-top: 50px;">
+    <div class="navbar navbar-inverse navbar-fixed-top" role="navigation">
+      <div class="container">
+        <div class="navbar-header">
+          <a class="navbar-brand" href="#">15418 Final Project</a>
+        </div>
+        <div class="navbar-collapse collapse">
+          <ul class="nav navbar-nav">
+          <li><a href="https://docs.google.com/document/d/1MDnw4tY6oe8v3hR9yXYLxGCYyjICv0ytYov0Q7c9sdU/pub" target="_blank">Proposal/Checkpoint</a></li>
+          <li><a href="#summary">Summary</a></li>
+          <li><a href="#background">Background</a></li>
+          <li><a href="#approach">Approach</a></li>
+          <li><a href="#demo">Demo</a></li>
+          <li><a href="#benchmark">Benchmarks</a></li>
+          <li><a href="#references">References</a></li>
+        </div>
+      </div>
+    </div>
+
+    <div class="container" role="main" style="padding: 40px 15px;">
+      <div class="container" style="text-align: center;">
+        <h1>ISPC Performance Monitor for Dummies</h1>
+        <h4>Stephen Choi, Kevin Ku</h4>
+        <h5>May 8, 2015</h5>
+      </div>
+
+      <div id="summary" class="page-header" style="padding-top: 40px; margin-top: -40px;">
+        <h2>Summary</h2>
+      </div>
+      <div>
+        <p>
+        In this project, we implemented a new set of features for the <a href="http://ispc.github.io" target="_blank"> Intel ISPC Compiler </a> to enable programmers to profile their programs compiled with the compiler. We aim to achieve the following goals:
+        </p>
+
+        <ol>
+          <li>
+            Implement a profiling mechanism with minimal footprint on the programs being profiled. 
+          </li>
+          <li>
+            Present a simple interface to minimize the amount of effort from the programmer. 
+          </li>
+          <li>
+            Collect detailed information including SIMD lane usage and cache hit rate at source line granularity.
+          </li>
+          <li>
+            Give the programmer control over the type of information to be collected by the profiler. 
+          </li>
+          <li>
+            Create an intuitive graphical interface for the developer to find performance bottleneck in the code.
+          </li>
+          <li>
+            Automatically suggest optimizations listed in the <a href="http://ispc.github.io/perfguide.html" target="_blank"> ISPC Performance Guide </a> to the programmer.
+          </li>
+        </ol>
+      </div>
+      
+      <div id="background" class="page-header" style="padding-top: 40px; margin-top: -40px;">
+        <h2>Background</h2>
+      </div>
+      <div>
+        <p>
+        Single Instruction, Multiple Data (SIMD) execution is a hardware optimization that allows for a single core on a processor to execute the same instruction(s) on different data in parallel. More specifically, instructions are broadcast to all Arithmetic Logic Units (ALUs), each workgin on a different piece of data. Masks are used to prevent certain ALUs from executing instructions when a control flow statement is encountered. The more ALUs masked, the lower the instruction stream coherence and thus, the lower the performance. SIMD divergence is when there is a lack of coherence. An example would be if we were running <code class="cpp">if (x % 2 == 0)</code> on contiguous values of x. Half our lanes would be doing meaningful work while in the body of the if statement but the other half would not. 
+        </p>
+
+        <p>
+        Intel SPMD Program Compiler (ISPC) is a compiler focusing on optimizing SPMD (Single Processor Multiple Data) programs by taking advantage of SIMD execution in its implementation. To describe it abstractly, programmers can specify a "task", or an ISPC function, to be launched. This will result in a "gang" of ISPC "program instances" to be spawned, which are expected to run in parallel on a single core. The number of program instances per gang is equal to the SIMD width of the core and performance is heavily dependent on SIMD coherence. In addition, multiple tasks can be launched to take advantage of multi-core execution.
+        </p>
+        
+        <p>
+        We note that the ISPC compiler already includes a mechanism for programmers to instrument their code. However, it does not provide very detailed statistics about the program and lacks fine grain control over the type of statements to profile. It also requires programmers to supply their own implementations of the instrument function, which can be very inefficient. Lastly, there does not exist tools that can help the programmer to comprehend the information extracted from instrumentation. 
+        </p>
+      </div>
+
+      <div id="approach" class="page-header" style="padding-top: 40px; margin-top: -40px;">
+        <h2>Approach</h2>
+      </div>
+      <div>
+        <p>
+        In order to minimize the profiler's footprint, we made the observation that SIMD divergence only occurs at control flow statements such as <code>if</code>, <code>switch</code>, and <code>for</code>. Therefore, we introduced the concepts of profile contexts and profile regions. A profile context is defined over a set of lines in the source code that the programmer wants to profile. Every control flow statement in that set is a profile region for the profile context. The programmer only needs to declare the start and end of a profile context and the type of profile regions to profile. The compiler takes care of generating code to profile every profile region and to track all function calls or task launches. This set up allows the programmer to easily control where he wants to profile and minimizes the amount of information we must gather to accurately portray the program's performance.
+        </p>
+        
+        <p>
+          We forked the official ISPC repository to implement the profiling mechanisms. For every control flow statement, we modified the compiler to emit calls to our profiling functions as the program enters or leaves the block. The profiling functions are automaticaly linked in by the compiler upon generating the object files for the user. 
+        </p>
+
+        <p> 
+          Since the compiler must generate the lane masks for the vector instructions and is aware of the current position in the source file, we are able to get lane usage information and source line directly from the compiler. In addition, we also recorded the initial lane mask upon entry into each profile region. Doing so allows us to calculate lane usage of the region relative to the number of lanes initially available to the region instead of the overall vector width. This handles situations such as when the user calls a function inside a control flow statment, causing the function to be entered with a partial mask. 
+        </p>
+          
+        <p>
+          To get other information such as cache hit rates, we used the <a href="https://software.intel.com/en-us/articles/intel-performance-counter-monitor" target="_blank">Intel Performance Monitor (PCM)</a>. Upon entry into a profile region, we record the performance counters reported by PCM and compare them to the counters upon exiting the region to obtain the desired statistics. Note that this limits our profiling mechanisms to running on Intel CPUs. In addition, PCM incurs significant overhead to the profiler (see <a href="#benchmark"> Benchmarks </a> section for details), so we've included an option to disable it when the programmer declares the profile context.
+        </p>
+
+        <p>
+          <b>A note on cache hit ratio: </b> The profiler needs to save the system counter state reported by PCM upon entering a region. Therefore, the cache hit ratios reported will not be purely for the program being profiled. However, the profiler makes a minimal amount of memory accesses after obtaining the system counter state, so the ratios will still be reflective of the program's actual performance.
+        </p>
+
+        <p>
+          To track usage across different tasks, we provided an implementation of the task system based on the default task system provided by the ISPC project. Our implementation uses a pool of pthreads to implement tasks and allows us to identify task launched within a profile context. 
+        </p>
+
+        <p>
+          The programmer can easily enable profiling by compiling his program with the <code>--profile</code> flag. A profile context can be defined by wrapping a C++ call to an ISPC function with a macro as follows:
+
+          <pre class=".pre-scrollable">
+            ...
+            ISPC_PROFILE_BEGIN(ISPC_PROFILE_ALL)
+            [call ISPC function here] 
+            ISPC_PORFILE_END
+            ...
+          </pre>
+
+          No special includes, libraries, or extra code is required from the programmer. We have the following flags to control the behavior of the profiler, which can be combined using bit-wise OR: 
+
+          <pre class=".pre-scrollable">
+            ISPC_PROFILE_IF
+            ISPC_PROFILE_LOOP
+            ISPC_PROFILE_FOREACH
+            ISPC_PROFILE_SWITCH
+            ISPC_PROFILE_FUNCTION 
+            ISPC_PROFILE_PCM
+            ISPC_PROFILE_ALL // Profile all regions with PCM enabled 
+            ISPC_PROFILE_ALL_NO_PCM  // Profile all regions without PCM 
+          </pre>
+        </p>
+
+        <p>
+          The profiler outputs the profile data into JSON files at the end of the program's execution. These files can then be uploaded to our visualizer for the programmer to visualize the performance bottlenecks. The visualizer allows the programmer to see SIMD lane usage on a line by line basis, along with information on cache hit ratio and instructions per cycle. The lines are color coded based on lane usage to give a very intuitive sense of the programs' performance. We've also written a suggestion engine that will give performance improving suggestions listed in <a href="http://ispc.github.io/perfguide.html" target="_blank"> ISPC Performance Guide </a> based on the profiled data.
+        </p>
+      </div>
+      
+      <div id="demo" class="page-header" style="padding-top: 40px; margin-top: -40px;">
+        <h2>Demo</h2>
+      </div>
+      <div>
+        <p>
+        <!-- TODO make sure link is updated -->
+        Here is a walkthrough of running our profiler on a very simple ISPC program (alternatively, you can try out a live version <a href="http://71.61.183.40:8080/ispc/visualize.php?upload_id=1431243722&code=foo.ispc" target="_blank">here!</a>). We have 2 source code files, test.cpp and foo.ispc. The programmer compiles the code with <code>--profile</code> flag.
+        </p>
+
+        <h3>test.cpp</h3>
+        <pre class=".pre-scrollable">
+          <code class="cpp">
+#include "foo_ispc.h"
+
+using namespace ispc;
+
+int main() {
+  double arr[1000000];
+
+  ISPC_PROFILE_BEGIN(ISPC_PROFILE_ALL)
+  foo(arr, 1000000);
+  ISPC_PROFILE_END
+
+  return 0;
+}
+          </code>
+        </pre>
+
+        <h3>foo.ispc</h3>
+        <pre class=".pre-scrollable">
+          <code class="cpp">
+#define MIN(a, b) ((a) &lt; (b) ? (a) : (b))
+
+task void task1() {
+  foreach (i = 1 ... 1000) {
+    int y = 0;
+    for (int x = 0; x &lt; i * 2; x++) {
+      y++;
+    }
+  }
+}
+
+task void task2() {
+  uniform int y = 0;
+  for (int x = 0; x &lt; 5; x++) {
+    y++;
+  }
+}
+
+void bar(int a) {
+  int b = a + 100;
+  return;
+}
+
+export void foo(uniform double arr[], uniform int len) {
+  launch task1();
+  launch task2();
+  int a = programIndex;
+  int b = 1;
+  int c = 1;
+  int d = 1;
+
+  // Testing nested if statements and else if statements.
+  if (a == 0) {
+    b = 0;
+  }
+  else {
+    if (a == 1) {
+      b = 1;
+      a = 2;
+      d = 2;
+    }
+    else if (a == 2) {
+      b = 2;
+      a = 2;
+      d = 2;
+    }
+    else {
+      b = 3;
+      a = 2;
+      d = 2;
+    }
+  }
+
+  // Test coherent control flow detection.
+  if (c == 1) {
+    c = 0;
+  } else {
+    c = -1;
+  }
+
+  // Testing function call.
+  bar(b);
+
+  // Test unmask.
+  if (a == 0) {
+    unmasked {
+      for (int i = 0; i &lt; MIN(8, len); i++) {
+        b += (int) arr[i];
+      }
+    }
+  }
+  // Test switch
+  switch (b) {
+    case 0:
+      b = 1;
+      break;
+    case 1:
+      b = 2;
+    default:
+      b = 0;
+      break;
+  }
+
+  // Test foreach.
+  foreach (i = 1 ... 5) {
+    b = 0;
+  }
+
+  // Test big for loop
+  for (uniform int idx = 0; c &lt; 100; c++) {
+    int xsum = 0;
+    int ysum = 0;
+    int zsum = 0;
+    for (uniform int i = 0; i &lt; 64 * 1024; i += 8) {
+      for (uniform int j = 0; j &lt; 8; j += programCount) {
+        xsum += j + programIndex;
+        ysum += 8 + j + programIndex;
+        zsum += 16 + j + programIndex;
+      }
+    }
+  }
+}
+          </code>
+        </pre>
+        
+        <!-- TODO update screenshots -->
+        <div>
+          <p>
+            Using our visualizer, the programmer can easily get an overview of the lane usage statistics in the program.
+
+          </p>
+          <img src="img/demo_full.png" class="img-responsive">
+        </div>
+
+        <br/>
+        <div>
+          <p>
+            Clicking on specific lines in the source code displays detailed information about the profile region that line is in. 
+          </p>
+          <img src="img/demo_switch.png" class="img-responsive">
+        </div>
+
+        <br/>
+        <div>
+          <p>
+            The programmer can also easily switch between source files and tasks, as well as view optimizations that are automatically suggested by our profiler. 
+          </p>
+          <img src="img/demo_suggestion.jpg" class="img-responsive">
+        </div>
+
+      </div>
+
+      <div id="benchmark" class="page-header" style="padding-top: 40px; margin-top: -40px;">
+        <h2>Benchmarks</h2>
+      </div>
+      <div>
+        <p>
+          We ran the benchmarks provided as part of the ISPC project to assess the performance impact of our profiler compared to the original ISPC code as well as code instrumented with the extremely basic and un-optimized instrumentation function included in the ISPC project. Here's the spec of the machine where we ran the tests on:
+          <ul>
+            <li>CPU: Intel Core i7-4790 @ 3.6 GHz (1 socket, 4 cores, 2 threads per core) </li>
+            <li>L2 Cache: 256 K </li>
+            <li>L3 Cache: 8192 K </li>
+            <li>RAM: 16 GB </li>
+            <li>OS: Ubuntu 14.04.1</li>
+          </ul>
+        </p>
+
+        <div>
+          <p>
+            The first set of benchmarks we ran is <code>perfbench</code>, which is "a number of microbenchmarks to measure system performance and code generation quality". The first set of tests from the <code>perfbench</code> suite tests the performance of the code on compute intensive workloads such as Array of Struct (AOS) and Struct of Array (SOA) element sum. We note that our profiler without PCM enabled is between 2x - 218x slower than the un-profiled ISPC implementation, and that our profiler with PCM enabled is 4x - 62492x slower than the un-profiled version. On the other hand, the basic instrumentation function is 52x - 3114x slower than the un-profiled ISPC version. 
+          </p>
+          <p>
+            Upon inspecting the code of the benchmark suite, we found the major contributor to the dramatic slow-down that we see: nested loops. Since each loop is a profile region, nested loops means that we are constantly entering and leaving regions, thereby incurring a large overhead in keeping the internal data structures updated. When PCM is enabled, this effect is even more dramatic since every region entry requires saving the system counter states.
+          </p>
+          <a href="img/benchmark_perfbench_compute.png" target="_blank"><img src="img/benchmark_perfbench_compute.png" class="img-responsive"></a>
+        </div>
+
+        <br/>
+        <div>
+          <p>
+            The second set of tests from the <code>perfbench</code> suite tests the performance of the code on memory intensive workloads. We note that our profiler without PCM enabled is between 5x - 28x slower than the un-profiled ISPC implementation, and that our profiler with PCM enabled is 6x - 39x slower than the un-profiled version. On the other hand, the basic instrumentation function is 412x - 2246x slower than the un-profiled ISPC version.
+          </p>
+          <a href="img/benchmark_perfbench_memory.png" target="_blank"><img src="img/benchmark_perfbench_memory.png" class="img-responsive"></a>
+        </div>
+
+        <br/>
+        <div>
+          <p>
+            We also ran the <code>aobench</code> suite, which is a "small Ambient Occlusion renderer program which is suited for benchmarking processor/language's floating point computing power" (<a href="https://syoyo.wordpress.com/2009/01/26/ao-bench-is-evolving/" target="_blank">source</a>). We generated images of 3 different size: 50x50, 100x100, and 200x200. Again, compared to the un-profiled ISPC code, we see around 64x - 170x slow down of the profiled version without PCM and around 650x - 1347x slow down for profiled version without PCM and but with tasks. On the other hand, there is around 431x - 1198x slow down for the instrumented version and around 2380x - 5023x slow down for the instrumented version with tasks.
+          </p>
+          <a href="img/benchmark_aobench.png" target="_blank"><img src="img/benchmark_aobench.png" class="img-responsive"></a>
+        </div>
+
+        <br/>
+        <div>
+          While our profiler seems to be better than the instrumented version, keep in mind that the instrument function provided is not optimized in any way. Nevertheless, it does show how our profiler allows programmers to get better performance in profiling their code without going through the hassle of implementing their own instrument function. The bottom line is that our profiler does significantly slow down the code, so it's advised to only run the profiler with a small data set that's reflective of the properties of the real data set. 
+        </div>
+      </div>
+      
+      <div id="references" class="page-header" style="padding-top: 40px; margin-top: -40px;">
+        <h2>References</h2>
+      </div>
+      <div>
+        <ul>
+          <li><a href="http://ispc.github.io" target="_blank">Intel ISPC Compiler</a></li>
+          <li><a href="https://github.com/miloyip/rapidjson" target="_blank">rapidjson</a></li>
+          <li><a href="https://software.intel.com/en-us/articles/intel-performance-counter-monitor" target="_blank">Intel Performance Counter Monitor</a></li>
+          <li><a href="https://highlightjs.org/" target="_blank">highlight.js</a></li>
+        </ul>
+      </div>
+      
+      <div id="work" class="page-header" style="padding-top: 40px; margin-top: -40px;">
+        <h2>Work Done by Each Student</h2>
+      </div>
+      <div>
+        Equal work was performed by both project members.
+      </div>
+    </div> <!-- main container -->
+
+    <!-- jQuery -->
+    <script src="js/jquery-1.11.1.min.js"></script>
+    <script src="js/bootstrap.min.js"></script>
+
+    <!-- highlight.js to highlight code blocks -->
+    <script>hljs.initHighlightingOnLoad();</script>
+  </body>
+</html>
