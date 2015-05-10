@@ -79,7 +79,7 @@
       </div>
       <div>
         <p>
-        Single Instruction, Multiple Data (SIMD) execution is a hardware optimization that allows for a single core on a processor to execute the same instruction(s) on different data in parallel. More specifically, instructions are broadcast to all Arithmetic Logic Units (ALUs), each workgin on a different piece of data. Masks are used to prevent certain ALUs from executing instructions when a control flow statement is encountered. The more ALUs masked, the lower the instruction stream coherence and thus, the lower the performance. SIMD divergence is when there is a lack of coherence. An example would be if we were running <code class="cpp">if (x % 2 == 0)</code> on contiguous values of x. Half our lanes would be doing meaningful work while in the body of the if statement but the other half would not. 
+        Single Instruction, Multiple Data (SIMD) execution is a hardware optimization that allows for a single core on a processor to execute the same instruction(s) on different data in parallel. More specifically, instructions are broadcast to all Arithmetic Logic Units (ALUs), each working on a different piece of data. Masks are used to prevent certain ALUs from executing instructions when a control flow statement is encountered. The more ALUs masked, the lower the instruction stream coherence and thus, the lower the performance. SIMD divergence is when there is a lack of coherence. An example would be if we were running <code class="cpp">if (x % 2 == 0)</code> on contiguous values of x. Half our lanes would be doing meaningful work while in the body of the if statement but the other half would not. 
         </p>
 
         <p>
