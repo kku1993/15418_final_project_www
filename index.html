@@ -220,13 +220,11 @@ export void foo(uniform double arr[], uniform int len) {
       b = 1;
       a = 2;
       d = 2;
-    }
-    else if (a == 2) {
+    } else if (a == 2) {
       b = 2;
       a = 2;
       d = 2;
-    }
-    else {
+    } else {
       b = 3;
       a = 2;
       d = 2;
@@ -246,13 +244,13 @@ export void foo(uniform double arr[], uniform int len) {
   // Test unmask.
   if (a == 0) {
     unmasked {
-      for (int i = 0; i &lt; MIN(8, len); i++) {
-        b += (int) arr[i];
+      for (int i = 0; i &lt; MIN(32, len); i += programCount) {
+        arr[i + programIndex] = b;
       }
     }
   }
   // Test switch
-  switch (b) {
+  switch (programIndex) {
     case 0:
       b = 1;
       break;
